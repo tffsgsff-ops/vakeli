@@ -228,7 +228,7 @@ async function askGemini(promptText) {
     }
     
     // Использование актуальной модели gemini-2.5-flash
-    const url = `https://generativetoolkit.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
     const payload = JSON.stringify({
         contents: [{ parts: [{ text: promptText }] }],
         generationConfig: { responseMimeType: "application/json" }
