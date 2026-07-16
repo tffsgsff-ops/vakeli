@@ -1,0 +1,65 @@
+name: Serverless AI SEO Compiler
+
+on:
+  push:
+    paths:
+      - 'prompt.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Вычисляем имя домена на основе репозитория (например: user.github.io/repo)
+      - name: Set Domain Env
+        run: |
+          echo "DOMAIN=${{ github.repository_owner }}.github.io" >> $GITHUB_ENV
+
+      - name: Run Build Engine
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: node generator.js
+
+      - name: Commit Updated Cache and Clear Prompt
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add cache.json prompt.txt
+          git commit -m "chore: update cache and reset prompt [skip ci]" || echo "No changes to commit"
+          git push
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages
+
+      # УМНЫЙ ШАГ: Сам запрашивает ID зоны по домену и очищает кэш
+      - name: Auto-Purge Cloudflare Cache
+        run: |
+          echo "🔍 Поиск Zone ID для домена: ${{ env.DOMAIN }}"
+          ZONE_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones?name=${{ env.DOMAIN }}" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" | jq -r '.result[0].id')
+          
+          if [ "$ZONE_ID" != "null" ] && [ -not -z "$ZONE_ID" ]; then
+            echo "✅ Zone ID найден: $ZONE_ID. Очищаем кэш..."
+            curl -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+              -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              --data '{"purge_everything":true}'
+          else
+            echo "⚠️ Предупреждение: Домен ${{ env.DOMAIN }} не найден в вашем аккаунте Cloudflare. Пропускаем очистку."
+          fi
